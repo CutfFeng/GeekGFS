@@ -69,7 +69,7 @@ msg_queue changemsg( long msgtype, int chunkIndex, char filename[4096], long rcv
         return msg;
     }
 }
-void changemsg( long msgtype, string file_fd, int* msgint, long rcvtype ){
+void changemsg( long msgtype, string file_fd, int* msgint, long rcvtype ){//和chunkserver交换消息
     // cout << "changemsg's msgint is " << msgint[0] << " " << msgint[1] << " " << msgint[2] << endl;
     int msqid;
     key_t key;
@@ -77,7 +77,7 @@ void changemsg( long msgtype, string file_fd, int* msgint, long rcvtype ){
     msg_queue msg( msgtype, msgint, file_fd );
     
     // 获取key值
-    if((key = ftok(MSG_FILE,'z')) < 0)
+    if((key = ftok(MSG_FILE,'a')) < 0)
     {
         perror("ftok error");
         exit(1);
@@ -89,6 +89,7 @@ void changemsg( long msgtype, string file_fd, int* msgint, long rcvtype ){
         perror("msgget error");
         exit(1);
     }
+    // cout << "filename:" << msg.msgtext << endl;
     msgsnd(msqid, &msg, sizeof(msg.msgtext), 0);//添加消息
     cout << "Message From Chunkserver:" << endl;
     for(;;){//读消息
