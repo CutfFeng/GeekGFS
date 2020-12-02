@@ -28,29 +28,27 @@ msg_queue::~msg_queue(){
 
 }
 
-char* read( string filename, int offset, int range ){
+char* read( string filename, int offset, int range, char buffer[] ){
     cout << "chunkserver's filename: " << filename << endl;
-    char buffer[4096];
+    // char buffer[4096];
     int fd;
     if( (fd = open( filename.c_str(), O_RDONLY )) < 0 ){ // 以读打开文件
         perror("Open file Failed");
         exit(1);
     }
-    cout << "fd: " << fd << " range: " << range << " offset: " << offset << endl;
+    // cout << "fd: " << fd << " range: " << range << " offset: " << offset << endl;
     int ret;
-    if( (ret = read( fd, buffer, range )) < 0 ){
+    if( (ret = pread( fd, buffer, range, offset )) < 0 ){
         cout << "File Read Failuer!" << endl;
     }
-    cout << "ret: " << ret << endl;
+    // cout << "ret: " << ret << endl;
     close( fd );
     return buffer;
 }
 
-void changemsg( long msgtype, int* msgint, long rcvtype ){
-    // cout << "I'm changemsg." << endl;
+int creatmsq(){
     int msqid;
     key_t key;
-    msg_queue msg;
     
     // 获取key值
     if((key = ftok(MSG_FILE,'a')) < 0)
@@ -65,23 +63,36 @@ void changemsg( long msgtype, int* msgint, long rcvtype ){
         perror("msgget error");
         exit(1);
     }
+}
+
+void changemsg( long msgtype, int* msgint, long rcvtype, int msqid ){
+    // cout << "I'm changemsg." << endl;
+    msg_queue msg;
     for(;;){//读消息
         msgrcv(msqid, &msg, 4096, rcvtype, 0);// 读类型为rcvtype的第一个消息
-        msg.msgtype = 666;
         string filename = msg.msgtext;
         int offset = msg.msgint[1];
         int range = msg.msgint[2];
+        char buffer[4096];
+        // cout << "filename,offset,range:" << filename << offset << range << endl;
         do{
-            strcpy( msg.msgtext, read( filename, offset, range ) );
+            read( filename, offset, range, buffer );
+            // cout << "changensg's buffer: " << buffer << endl;
+            strcpy( msg.msgtext, buffer );
+            cout << "msgtext: " << msg.msgtext << endl;
+            msg.msgtype = 666;
             msgsnd(msqid, &msg, sizeof(msg.msgtext), 0);//添加消息
+            // cout << "ret: " << ret << endl;
             offset += 4096;
             range -= 4096; 
-        }while( range >= 4096 );
+        }while( range >= 0 );
+        // cout << " changemsg Done." << endl;
     }
 }
 
 int main()
 {
-    changemsg( 666, NULL, 777 );
+    int msqid = creatmsq();
+    changemsg( 666, NULL, 777, msqid );
     return 0;
 }

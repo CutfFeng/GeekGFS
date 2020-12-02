@@ -43,25 +43,25 @@ msg_queue::~msg_queue(){
 
 }
 
-msg_queue changemsg( long msgtype, int chunkIndex, char filename[4096], long rcvtype ){//和master交换消息
+msg_queue changemsg( long msgtype, int chunkIndex, char filename[4096], long rcvtype, int msqid ){//和master交换消息
     // cout << "changemsg's filename is " << filename << endl;
-    int msqid;
-    key_t key;
+    // int msqid;
+    // key_t key;
     msg_queue msg( msgtype, chunkIndex, filename );
     
     // 获取key值
-    if((key = ftok(MSG_FILE,'a')) < 0)
-    {
-        perror("ftok error");
-        exit(1);
-    }
+    // if((key = ftok(MSG_FILE,'a')) < 0)
+    // {
+    //     perror("ftok error");
+    //     exit(1);
+    // }
  
-    // 创建消息队列
-    if ((msqid = msgget(key, IPC_CREAT|0777)) == -1)
-    {
-        perror("msgget error");
-        exit(1);
-    }
+    // // 创建消息队列
+    // if ((msqid = msgget(key, IPC_CREAT|0777)) == -1)
+    // {
+    //     perror("msgget error");
+    //     exit(1);
+    // }
     // cout << "add to msgqueue:" << msg.msgtext << endl;
     msgsnd(msqid, &msg, sizeof(msg.msgtext), 0);//添加消息
     for(;;){//读消息
@@ -69,40 +69,23 @@ msg_queue changemsg( long msgtype, int chunkIndex, char filename[4096], long rcv
         return msg;
     }
 }
-void changemsg( long msgtype, string file_fd, int* msgint, long rcvtype ){//和chunkserver交换消息
+void changemsg( long msgtype, string file_fd, int* msgint, long rcvtype, int msqid ){//和chunkserver交换消息
     // cout << "changemsg's msgint is " << msgint[0] << " " << msgint[1] << " " << msgint[2] << endl;
-    int msqid;
-    key_t key;
-    // cout << "222" << endl;
-    msg_queue msg( msgtype, msgint, file_fd );
     
-    // 获取key值
-    if((key = ftok(MSG_FILE,'a')) < 0)
-    {
-        perror("ftok error");
-        exit(1);
-    }
- 
-    // 创建消息队列
-    if ((msqid = msgget(key, IPC_CREAT|0777)) == -1)
-    {
-        perror("msgget error");
-        exit(1);
-    }
+    msg_queue msg( msgtype, msgint, file_fd );
     // cout << "filename:" << msg.msgtext << endl;
     msgsnd(msqid, &msg, sizeof(msg.msgtext), 0);//添加消息
-    cout << "Message From Chunkserver:" << endl;
     for(;;){//读消息
+        cout << "Message From Chunkserver:";
         msgrcv(msqid, &msg, 4096, rcvtype, 0);// 返回类型为rcvtype的第一个消息
-        cout << msg.msgtext;
+        cout << msg.msgtext << endl;
     }
-    cout << endl;
 }
 
-void read( string file_fd, int handle, size_t offset, size_t range ){
+void read( string file_fd, int handle, size_t offset, size_t range, int msqid ){
     // cout << "I'm read." << endl;
     int msgint[3] = {handle, offset, range};
-    changemsg( 777, file_fd, msgint, 666 );
+    changemsg( 777, file_fd, msgint, 666, msqid );
 }
 void write(){
 
@@ -114,6 +97,26 @@ void Delete(){
     
 }
 
+int creatmsq(){     //创建消息队列,返回队列id
+    int msqid;
+    key_t key;
+    // cout << "222" << endl;
+    
+    // 获取key值
+    if((key = ftok(MSG_FILE,'a')) < 0)
+    {
+        perror("ftok error");
+        exit(1);
+    }
+ 
+    // 创建消息队列
+    if ((msqid = msgget(key, IPC_CREAT|0777)) == -1)
+    {
+        perror("msgget error");
+        exit(1);
+    }
+    return msqid;
+}
 
 class client
 {
@@ -125,6 +128,7 @@ private:
     int chunkIndex;
     int chunkHandle[3];
     char chunkLocation[256];
+    int msqid;
 public:
     client( int comd, char name[256], int offset, int range );
     ~client();
@@ -138,7 +142,8 @@ client::client( int comd, char name[256], int offset, int range ){
     this->byterange = range;
     this->chunkIndex = offset/64 + 1;   //计算得到chunkIndex
     long msgtype = 999,rcvtype = 888;
-    msg_queue msg = changemsg( msgtype, chunkIndex, filename, rcvtype );
+    this->msqid = creatmsq();
+    msg_queue msg = changemsg( msgtype, chunkIndex, filename, rcvtype, msqid );
     for (int i=0; i<3; i++){
         this->chunkHandle[i] = msg.msgint[i];
     }
@@ -153,9 +158,9 @@ void client::operation(){
         file_fd = file_fd + chunkLocation[i];
     }
     file_fd = file_fd + "/" + this->filename;
-    cout << "file_fd is " << file_fd << endl;
+    // cout << "file_fd is " << file_fd << endl;
     if( command == 0 )
-        read( file_fd, chunkHandle[0], offset, byterange );
+        read( file_fd, chunkHandle[0], offset, byterange, msqid );
     else if( command == 1 )
         write();
     else if ( command == 2 )
