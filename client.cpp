@@ -8,7 +8,8 @@
 #include <sys/stat.h>
 #include <sys/fcntl.h>
 // 用于创建一个唯一的key
-#define MSG_FILE "/home/xrfpc/Documents/distributed-finalwork1/message"
+// #define MSG_FILE "/home/xrfpc/Documents/distributed-finalwork1/message"
+#define IPC_KEY 1;
 using namespace std;
 
 class msg_queue
@@ -44,25 +45,9 @@ msg_queue::~msg_queue(){
 }
 
 msg_queue changemsg( long msgtype, int chunkIndex, char filename[4096], long rcvtype, int msqid ){//和master交换消息
-    // cout << "changemsg's filename is " << filename << endl;
-    // int msqid;
-    // key_t key;
+    // cout << "changemsg1's filename is " << filename << endl;
     msg_queue msg( msgtype, chunkIndex, filename );
-    
-    // 获取key值
-    // if((key = ftok(MSG_FILE,'a')) < 0)
-    // {
-    //     perror("ftok error");
-    //     exit(1);
-    // }
- 
-    // // 创建消息队列
-    // if ((msqid = msgget(key, IPC_CREAT|0777)) == -1)
-    // {
-    //     perror("msgget error");
-    //     exit(1);
-    // }
-    // cout << "add to msgqueue:" << msg.msgtext << endl;
+    // cout << "msqid is " << msqid << endl;
     msgsnd(msqid, &msg, sizeof(msg.msgtext), 0);//添加消息
     for(;;){//读消息
         msgrcv(msqid, &msg, 4096, rcvtype, 0);// 返回类型为rcvtype的第一个消息
@@ -70,25 +55,34 @@ msg_queue changemsg( long msgtype, int chunkIndex, char filename[4096], long rcv
     }
 }
 void changemsg( long msgtype, string file_fd, int* msgint, long rcvtype, int msqid ){//和chunkserver交换消息
-    // cout << "changemsg's msgint is " << msgint[0] << " " << msgint[1] << " " << msgint[2] << endl;
-    
+    // cout << "I'm changemsg." << endl;
     msg_queue msg( msgtype, msgint, file_fd );
-    // cout << "filename:" << msg.msgtext << endl;
+    // cout << "fileLocation is " << msg.msgtext << endl;
+    // cout << "msqid is " << msqid << msgint[1] << msgint[2] << endl;
     msgsnd(msqid, &msg, sizeof(msg.msgtext), 0);//添加消息
     for(;;){//读消息
         cout << "Message From Chunkserver:";
         msgrcv(msqid, &msg, 4096, rcvtype, 0);// 返回类型为rcvtype的第一个消息
         cout << msg.msgtext << endl;
+        if( strcmp( msg.msgtext, "Done." ) == 0 )
+            return;
     }
 }
 
 void read( string file_fd, int handle, size_t offset, size_t range, int msqid ){
     // cout << "I'm read." << endl;
     int msgint[3] = {handle, offset, range};
-    changemsg( 777, file_fd, msgint, 666, msqid );
+    changemsg( 333, file_fd, msgint, 777, msqid );
+    return;
 }
-void write(){
-
+void write( string file_fd, int* handle, size_t offset, size_t range, int msqid ){
+    // cout << "I'm write." << endl;
+    int msgint[3] = {-1, offset, range};
+    changemsg( 222, file_fd, msgint, 666, msqid );
+    string data = "";
+    cin >> data;
+    // cout << "data is " << data << endl;
+    changemsg( 221, data, msgint, 666, msqid );
 }
 void append(){
 
@@ -100,14 +94,15 @@ void Delete(){
 int creatmsq(){     //创建消息队列,返回队列id
     int msqid;
     key_t key;
+    key = IPC_KEY;
     // cout << "222" << endl;
     
     // 获取key值
-    if((key = ftok(MSG_FILE,'a')) < 0)
-    {
-        perror("ftok error");
-        exit(1);
-    }
+    // if((key = ftok(MSG_FILE,'b')) < 0)
+    // {
+    //     perror("ftok error");
+    //     exit(1);
+    // }
  
     // 创建消息队列
     if ((msqid = msgget(key, IPC_CREAT|0777)) == -1)
@@ -130,20 +125,22 @@ private:
     char chunkLocation[256];
     int msqid;
 public:
-    client( int comd, char name[256], int offset, int range );
+    client( int comd, string name, int offset, int range, int msqid );
     ~client();
     void operation ();
 };
-client::client( int comd, char name[256], int offset, int range ){
+client::client( int comd, string name, int offset, int range, int msqid ){
+    // cout << "I'm here." << endl;
     this->command = comd;
-    strcpy( this->filename, name );
+    strcpy( this->filename, name.c_str() );
     // cout << "filename: " << filename << endl;
     this->offset = offset;
     this->byterange = range;
     this->chunkIndex = offset/64 + 1;   //计算得到chunkIndex
     long msgtype = 999,rcvtype = 888;
-    this->msqid = creatmsq();
+    this->msqid = msqid;
     msg_queue msg = changemsg( msgtype, chunkIndex, filename, rcvtype, msqid );
+    // cout << "I'm client.Msgtext is " << msg.msgtext << endl;
     for (int i=0; i<3; i++){
         this->chunkHandle[i] = msg.msgint[i];
     }
@@ -153,26 +150,44 @@ client::~client(){
     
 }
 void client::operation(){
-    string file_fd = "";
-    for( int i=0; this->chunkLocation[i]!=' '; i++ ){
-        file_fd = file_fd + chunkLocation[i];
-    }
-    file_fd = file_fd + "/" + this->filename;
-    // cout << "file_fd is " << file_fd << endl;
-    if( command == 0 )
+    // cout << "command is " << command << endl;
+    if( command == 0 ){
+        string file_fd = "";
+        for( int i=0; this->chunkLocation[i]!=' '; i++ ){
+            file_fd = file_fd + chunkLocation[i];
+        }
+        file_fd = file_fd + "/" + this->filename;
+        // cout << "file_fd is " << file_fd << endl;
         read( file_fd, chunkHandle[0], offset, byterange, msqid );
-    else if( command == 1 )
-        write();
+    }
+    else if( command == 1 ){
+        string file_fd = chunkLocation;
+        string str = this->filename;
+        string name = "/" + str;
+        int pos = 0,addpos;
+        for( int i=0; i<3; i++ ){
+            addpos = file_fd.find( " ", pos );
+            cout << "addpos is " << addpos << endl;
+            file_fd.insert( addpos, name );
+            pos = addpos+name.size()+1;
+        }
+        // cout << "file_fd is " << file_fd << endl;
+        write( file_fd, chunkHandle, offset, byterange, msqid );
+    }
     else if ( command == 2 )
         append();
-    else
+    else if ( command == 3)
         Delete();
+    else{
+        cout << "There is no this option!" << endl;
+    }
+    return;
 }
 
-void print(){
+void print( int msqid ){
     // cout << "a" << endl;
     while (1){
-        char name[256];
+        string name = "";
         size_t offset,range;
         int comd;
         cout << "Please chose your option:" << endl;
@@ -189,7 +204,7 @@ void print(){
             cin >> offset ;
             cout << "range:";
             cin >> range;
-            client client( comd, name, offset, range );
+            client client( comd, name, offset, range, msqid );
             client.operation();
         }
     }
@@ -197,6 +212,7 @@ void print(){
 
 int main()
 {
-    print();
+    int msqid = creatmsq();
+    print( msqid );
     return 0;
 }

@@ -7,7 +7,8 @@
 #include <string.h>
 #include <sys/fcntl.h>
 // 用于创建一个唯一的key
-#define MSG_FILE "/home/xrfpc/Documents/distributed-finalwork1/message"
+// #define MSG_FILE "/home/xrfpc/Documents/distributed-finalwork1/message"
+#define IPC_KEY 1;
 using namespace std;
 
 class master
@@ -70,7 +71,7 @@ string master::get_location( string name, int index ){
         i++;
         location = location + chunkLocation[chunkId[j]] + " ";
     }
-    cout << "location is " << location << endl;
+    // cout << "location is " << location << endl;
     return location;
 }
 int* master::get_handle( string name, int index ){
@@ -124,17 +125,18 @@ msg_queue::~msg_queue(){
 void changemsg(){
     int msqid;
     key_t key;
+    key = IPC_KEY;
     msg_queue msg;
 
     // 获取key值
-    if ((key = ftok(MSG_FILE, 'a')) < 0) 
-    {
-        perror("ftok error");
-        exit(1);
-    }
+    // if ((key = ftok(MSG_FILE, 'b')) < 0) 
+    // {
+    //     perror("ftok error");
+    //     exit(1);
+    // }
  
     // 打开消息队列
-    if ((msqid = msgget(key, IPC_CREAT|0777)) == -1) 
+    if ((msqid = msgget(key, IPC_CREAT)) == -1) 
     {
         perror("msgget error");
         exit(1);
@@ -145,8 +147,8 @@ void changemsg(){
         // cout << "222" << endl;
         string name = msg.msgtext;
         int index = msg.index;
-        cout << "filename is " << msg.msgtext << endl;
-        cout << "chunkIndex is " << index << endl;
+        // cout << "filename is " << msg.msgtext << endl;
+        // cout << "chunkIndex is " << index << endl;
 
         msg.msgtype = 888; // 添加消息，类型为888
         master mst;
@@ -158,7 +160,9 @@ void changemsg(){
             msg.msgint[i] = *(handle+i);
             // cout << "333" << endl;
         }
+        // cout << "I'm here." << endl;
         msgsnd(msqid, &msg, sizeof(msg.msgtext), 0);
+        cout << "Change messge done." << endl;
     }
 }
 
