@@ -34,14 +34,14 @@ master::master(){
         chunkLocation.push_back( ss );
         ss = "../chunkserver/chunk";
     }
-    int a[6] = {1,2,3,0,4,5},b[3] = {3,4,5};
+    int a[6] = {1,2,3,0,4,5},b[6] = {3,4,5,0,1,2};
     vector<int> c;
     for( int i=0; i<6; i++ ){
         c.push_back( a[i] );
     }
     fileId_chunkId.push_back(c);
     vector<int> d;
-    for( int i=0; i<3; i++ ){
+    for( int i=0; i<6; i++ ){
         d.push_back( b[i] );
     }
     fileId_chunkId.push_back( d );
@@ -87,14 +87,19 @@ int* master::get_handle( string name, int index ){
         cout << "没有该文件名！" << endl;
         return NULL;
     }
+    // cout << "fileId is " << fileId << endl;
     int *handle = new int[3];
     string location = "";   //存放chunk位置
     int chunkId[3];         //根据chunkId去chunkLocation数组里找它的位置
     int i = (index-1)*3;    //chunk在二维数组fileId_chunkId的第一个下标
+    if ( (i<0) || (i>5) )
+        return NULL;
+    // cout << "i is " << i << endl;
     for( int j=0; j<3; j++ ){
         chunkId[j] = fileId_chunkId[fileId][i];
         i++;
         location = location + chunkLocation[chunkId[j]] + "/" + name;
+        // cout << "location is " << location << endl;
         int fd = open( location.c_str(),O_RDWR );//获得文件描述符
         handle[j] = fd ;
         close (fd);
@@ -122,38 +127,46 @@ msg_queue::~msg_queue(){
 
 }
 
-void changemsg(){
+int creatmsq(){
     int msqid;
     key_t key;
-    key = IPC_KEY;
-    msg_queue msg;
+    key = IPC_KEY;//给定唯一的key值
 
-    // 获取key值
-    // if ((key = ftok(MSG_FILE, 'b')) < 0) 
-    // {
-    //     perror("ftok error");
-    //     exit(1);
-    // }
- 
-    // 打开消息队列
-    if ((msqid = msgget(key, IPC_CREAT)) == -1) 
+    // 创建消息队列
+    if ((msqid = msgget(key, IPC_CREAT|0777)) == -1)
     {
         perror("msgget error");
         exit(1);
     }
+    return msqid;
+}
+
+void changemsg(){
+    int msqid = creatmsq();
+    msg_queue msg;
     
     for(;;){        
-        msgrcv(msqid, &msg, 4096, 999, 0);// 读从客户端发送过来的消息
-        // cout << "222" << endl;
+        msgrcv(msqid, &msg, 4096, -333, 0);// 读从客户端发送过来的消息
         string name = msg.msgtext;
-        int index = msg.index;
+        // cout << "msg.index is " << msg.index << endl;
+        int index;
+        if( msg.msgtype == 222 ){
+            //append函数请求开辟新的chunk
+            index = msg.index + 1;
+        }
+        else{
+            index = msg.index;
+        }
+        
+        // cout << "222" << endl;
+        
         // cout << "filename is " << msg.msgtext << endl;
         // cout << "chunkIndex is " << index << endl;
 
-        msg.msgtype = 888; // 添加消息，类型为888
+        msg.msgtype = 999; // 添加消息，类型为999
         master mst;
         strcpy( msg.msgtext, mst.get_location( name, index ).c_str() );
-        // cout << "111" << endl;
+        // cout << "index is " << index << endl;
         int *handle = mst.get_handle( name, index );
         // cout << "*handle is " << handle[0] << endl;
         for (int i=0; i<3; i++){
@@ -168,6 +181,11 @@ void changemsg(){
 
 int main()
 {
-    changemsg();
+    changemsg( );
+    // msg_queue msg;
+    // for (int i=0; i<4; i++){
+    //     msgrcv( 11, &msg, sizeof(msg.msgtext), 0, 0);
+    //     cout << msg.msgtype << endl;
+    // }
     return 0;
 }
