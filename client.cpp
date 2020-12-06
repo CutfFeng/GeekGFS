@@ -1,3 +1,12 @@
+//
+//Create by Ruifeng Xing on 2020-12-05
+//
+/*使用方法：
+ *1.需要先生成chunk和testfile测试文件，生成方法位于chunkserver.cpp的注释中
+ *2.使用“sudo g++ client.cpp -o client.out”命令生成可执行文件
+ *3.使用“sudo ./client.out”命令使程序进入运行状态
+ *注意：master.out, client.out, chunkserver.out需要同时处于运行状态
+*/
 #include "iostream"
 #include <stdio.h>
 #include <stdlib.h>
@@ -7,8 +16,7 @@
 #include <vector>
 #include <sys/stat.h>
 #include <sys/fcntl.h>
-// 用于创建一个唯一的key
-// #define MSG_FILE "/home/xrfpc/Documents/distributed-finalwork1/message"
+//给定一个唯一的key
 #define IPC_KEY1 1
 #define IPC_KEY2 2
 using namespace std;
@@ -34,9 +42,7 @@ msg_queue::msg_queue( long msgtype, int chunkIndex, char filename[4096] ){
     for(int i=0; i<3; i++){
         this->msgint[i] = -1;
     }
-    // cout << "111" << endl;
     strcpy( this->msgtext, filename );
-    // cout << "msg's filename is " << msgtext << endl;
 }
 msg_queue::msg_queue( long msgtype, int* mint, string file_fd ){
     this->msgtype = msgtype;
@@ -52,7 +58,6 @@ msg_queue::~msg_queue(){
 msg_queue changemsg( long msgtype, int chunkIndex, char filename[4096], long rcvtype, int msqid ){//和master交换消息
     cout << "changemsg1's filename is " << filename << endl;
     msg_queue msg( msgtype, chunkIndex, filename );
-    // cout << "msqid is " << msqid << endl;
     msgsnd(msqid, &msg, sizeof(msg.msgtext), 0);//添加消息
     for(;;){//读消息
         msgrcv(msqid, &msg, 4096, rcvtype, 0);// 返回类型为rcvtype的第一个消息
@@ -60,10 +65,7 @@ msg_queue changemsg( long msgtype, int chunkIndex, char filename[4096], long rcv
     }
 }
 void changemsg( long msgtype, string file_fd, int* msgint, long rcvtype, int msqid ){//和chunkserver交换消息
-    // cout << "I'm changemsg." << endl;
     msg_queue msg( msgtype, msgint, file_fd );
-    // cout << "fileLocation is " << msg.msgtext << endl;
-    // cout << "msqid is " << msqid << msgint[1] << msgint[2] << endl;
     msgsnd(msqid, &msg, sizeof(msg.msgtext), 0);//添加消息
     for(;;){//读消息
         cout << "Message From Chunkserver:";
@@ -72,11 +74,8 @@ void changemsg( long msgtype, string file_fd, int* msgint, long rcvtype, int msq
         if( strcmp( msg.msgtext, "Over." ) == 0 )
             break;
     }
-    // cout << "555" << endl;
     for(;;){//读消息
-        // cout << "Message From Chunkserver:";
         msgrcv(msqid, &msg, 4096, 555, 0);// 返回类型为rcvtype的第一个消息
-        // cout << msg.msgtext << endl;
         if( strcmp( msg.msgtext, "Over." ) == 0 )
             break;
     }
@@ -84,19 +83,15 @@ void changemsg( long msgtype, string file_fd, int* msgint, long rcvtype, int msq
 }
 
 void readfile( string file_fd, int handle, size_t offset, size_t range, int msqid ){
-    // cout << "I'm read." << endl;
     int msgint[3] = {handle, offset, range};
     changemsg( 333, file_fd, msgint, 777, msqid );
     return;
 }
 void writefile( string file_fd, int* handle, size_t offset, size_t range, int msqid ){
-    // cout << "I'm write." << endl;
     int msgint[3] = {-1, offset, range};
     changemsg( 222, file_fd, msgint, 666, msqid );
-    // cout << "input data:" << endl;
     string data = "";
     cin >> data;
-    // cout << "data is " << data << endl;
     changemsg( 221, data, msgint, 666, msqid );
     cout << "writefile done." << endl;
 }
@@ -110,7 +105,6 @@ void append( char filename[], int chunkIndex, string file_fd, int* handle, size_
         if( strcmp( msg.msgtext, "Over." ) == 0 )
             return;
         else{
-            // cout << "I'm here and chunkIndex is " << chunkIndex << endl;
             msg_queue tempmsg = changemsg( 222, chunkIndex, filename, 999, msqid1 );
             string file_fd = tempmsg.msgtext;
             string str = filename;
@@ -118,21 +112,15 @@ void append( char filename[], int chunkIndex, string file_fd, int* handle, size_
             int pos = 0,addpos;
             for( int i=0; i<3; i++ ){
                 addpos = file_fd.find( " ", pos );
-                // cout << "addpos is " << addpos << endl;
                 file_fd.insert( addpos, name );
                 pos = addpos+name.size()+1;
             }
-            // cout << "fd is " << file_fd << endl;
             writefile( file_fd, handle, offset, range, msqid2 );
-            // msgrcv( msqid2, &msg, 4096, 555, 0 );
-            // cout << msg.msgtext << endl;
-            // if( strcmp( msg.msgtext, "Over." ) == 0 )
-            //     return;
         }
     }
 }
-void Delete(){
-    
+void Delete( char filename[], int msqid ){
+    msg_queue msg = changemsg( 221, -1, filename, 998, msqid );
 }
 
 int creatmsq( key_t IPC_KEY ){     //创建消息队列,返回队列id
@@ -167,19 +155,19 @@ public:
     void operation ();
 };
 client::client( int comd, string name, int offset, int range, int msqid1, int msqid2 ){
-    // cout << "I'm here." << endl;
     this->command = comd;
     strcpy( this->filename, name.c_str() );
-    // cout << "filename: " << filename << endl;
     this->offset = offset;
     this->byterange = range;
     this->chunkIndex = (offset/(64*1024) + 1);   //计算得到chunkIndex
-    // cout << "chunkIndex is " << chunkIndex << endl;
     long msgtype = 333,rcvtype = 999;
     this->msqid1 = msqid1;
     this->msqid2 = msqid2;
     msg_queue msg = changemsg( msgtype, chunkIndex, filename, rcvtype, msqid1 );
-    // cout << "I'm client.Msgtext is " << msg.msgtext << endl;
+    if( strcmp(msg.msgtext,"NULL") == 0 ){
+        cout << "No such file or dictionary!" << endl;
+        return;
+    }
     for (int i=0; i<3; i++){
         this->chunkHandle[i] = msg.msgint[i];
     }
@@ -189,14 +177,12 @@ client::~client(){
     
 }
 void client::operation(){
-    // cout << "command is " << command << endl;
     if( command == 0 ){// read的实现
         string file_fd = "";
         for( int i=0; this->chunkLocation[i]!=' '; i++ ){
             file_fd = file_fd + chunkLocation[i];
         }
-        file_fd = file_fd + "/" + this->filename;
-        // cout << "file_fd is " << file_fd << endl;
+        file_fd = file_fd + "/" + this->filename;//拼接文件完整路径
         readfile( file_fd, chunkHandle[0], offset, byterange, msqid2 );
     }
     else if( command == 1 ){//write的实现
@@ -206,11 +192,9 @@ void client::operation(){
         int pos = 0,addpos;
         for( int i=0; i<3; i++ ){
             addpos = file_fd.find( " ", pos );
-            // cout << "addpos is " << addpos << endl;
             file_fd.insert( addpos, name );
             pos = addpos+name.size()+1;
         }
-        // cout << "file_fd is " << file_fd << endl;
         writefile( file_fd, chunkHandle, offset, byterange, msqid2 );
     }
     else if ( command == 2 ){//append的实现
@@ -220,14 +204,14 @@ void client::operation(){
         int pos = 0,addpos;
         for( int i=0; i<3; i++ ){
             addpos = file_fd.find( " ", pos );
-            // cout << "addpos is " << addpos << endl;
             file_fd.insert( addpos, name );
             pos = addpos+name.size()+1;
         }
         append( filename, chunkIndex, file_fd, chunkHandle, offset, byterange, msqid1, msqid2 );
     }
-    else if ( command == 3)
-        Delete();
+    else if ( command == 3){//delete的实现
+        Delete( filename, msqid1 );
+    }   
     else{
         cout << "There is no this option!" << endl;
     }
@@ -235,12 +219,11 @@ void client::operation(){
 }
 
 void print( int msqid1, int msqid2 ){
-    // cout << "a" << endl;
     while (1){
         string name = "";
         int offset=0,range;
         int comd;
-        cout << "Please chose your option:" << endl;
+        cout << endl << endl << "Please chose your option:" << endl;
         cout << "0:read; 1:write; 2:append; 3:exit; 4:delete" << endl;
         cin >> comd;
         if( comd == 3 ){

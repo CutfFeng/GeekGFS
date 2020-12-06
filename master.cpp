@@ -1,3 +1,12 @@
+//
+//Create by Ruifeng Xing on 2020-12-05
+//
+/*使用方法：
+ *1.需要先生成chunk和testfile测试文件，生成方法位于chunkserver.cpp的注释中
+ *2.使用“sudo g++ master.cpp -o master.out”命令生成可执行文件
+ *3.使用“sudo ./master.out”命令使程序进入运行状态
+ *注意：master.out, client.out, chunkserver.out需要同时处于运行状态
+*/
 #include "iostream"
 #include "vector"
 #include <stdio.h>
@@ -6,8 +15,10 @@
 #include <unistd.h>
 #include <string.h>
 #include <sys/fcntl.h>
-// 用于创建一个唯一的key
-// #define MSG_FILE "/home/xrfpc/Documents/distributed-finalwork1/message"
+#include <map>
+#include <ctime>
+#include <fstream>
+// 给定一个唯一的key
 #define IPC_KEY 1;
 using namespace std;
 
@@ -19,15 +30,20 @@ private:
     vector<vector<int>> fileId_chunkId;    //(index-1)*3是第一个下标，继续往后遍历两个
     vector<int> chunkhandle;
 public:
+    map<string,int> file_tag;
     master();
     ~master();
     string get_location( string name, int index );
     int* get_handle( string name, int index ); 
+    void Delete( string name );
+    void writefile();
 };
 master::master(){
     // cout << "I'm master." << endl;
     filename.push_back( "testfile1" );
     filename.push_back( "testfile2" );
+    file_tag.insert(pair<string,int>("testfile1",1));
+    file_tag.insert(pair<string,int>("testfile2",1));
     string ss = "../chunkserver/chunk";
     for( int i=0; i<6; i++ ){//创建6个chunkserver的路径
         ss = ss + std::to_string(i);
@@ -71,7 +87,6 @@ string master::get_location( string name, int index ){
         i++;
         location = location + chunkLocation[chunkId[j]] + " ";
     }
-    // cout << "location is " << location << endl;
     return location;
 }
 int* master::get_handle( string name, int index ){
@@ -87,25 +102,43 @@ int* master::get_handle( string name, int index ){
         cout << "没有该文件名！" << endl;
         return NULL;
     }
-    // cout << "fileId is " << fileId << endl;
     int *handle = new int[3];
     string location = "";   //存放chunk位置
     int chunkId[3];         //根据chunkId去chunkLocation数组里找它的位置
     int i = (index-1)*3;    //chunk在二维数组fileId_chunkId的第一个下标
     if ( (i<0) || (i>5) )
         return NULL;
-    // cout << "i is " << i << endl;
     for( int j=0; j<3; j++ ){
         chunkId[j] = fileId_chunkId[fileId][i];
         i++;
         location = location + chunkLocation[chunkId[j]] + "/" + name;
-        // cout << "location is " << location << endl;
         int fd = open( location.c_str(),O_RDWR );//获得文件描述符
         handle[j] = fd ;
         close (fd);
         location = "";
     }
     return handle;
+}
+void master::Delete( string name ){
+    map<string,int>::iterator iter =  file_tag.find(name);
+    if(iter != file_tag.end()){
+        iter->second = 0;
+    }
+    else
+        cout<<"Do not find this file!"<<endl;
+}
+void master::writefile(){
+    std::ofstream writefile;
+    //打开文件
+    writefile.open("../masterdata.txt");
+    writefile << "filename:\n";
+    for(int i = 0; i < filename.size(); i++)
+    {
+        //写入数据
+        writefile << filename[i];
+    }
+    //关闭文件
+    writefile.close();
 }
 
 class msg_queue
@@ -144,48 +177,55 @@ int creatmsq(){
 void changemsg(){
     int msqid = creatmsq();
     msg_queue msg;
+    //获取系统时间
+    time_t now = time(0);
+    tm *ltm = localtime(&now);
+    int hour = ltm->tm_hour;
     
-    for(;;){        
+    for(;;){  
+        master mst;
+        time_t now = time(0);
+        tm *templtm = localtime(&now);
+        int temphour = templtm->tm_mday; 
+        if( temphour == (hour+7) ){//每七小时更新一次
+            // mst.writefile();
+        }  
+           
         msgrcv(msqid, &msg, 4096, -333, 0);// 读从客户端发送过来的消息
         string name = msg.msgtext;
-        // cout << "msg.index is " << msg.index << endl;
-        int index;
-        if( msg.msgtype == 222 ){
-            //append函数请求开辟新的chunk
-            index = msg.index + 1;
+        if( msg.msgtype == 221 ){//client请求删除文件
+            mst.Delete(name);
         }
         else{
-            index = msg.index;
-        }
-        
-        // cout << "222" << endl;
-        
-        // cout << "filename is " << msg.msgtext << endl;
-        // cout << "chunkIndex is " << index << endl;
+            map<string,int>::iterator iter =  mst.file_tag.find(name);
+            //被访问则修改标志位
+            if( (iter != mst.file_tag.end()) && (iter->second = 0) ){
+                iter->second = 1;
+            }
+            // cout << "msg.index is " << msg.index << endl;
+            int index;
+            if( msg.msgtype == 222 ){
+                //append函数请求开辟新的chunk
+                index = msg.index + 1;
+            }
+            else{
+                index = msg.index;
+            }
 
-        msg.msgtype = 999; // 添加消息，类型为999
-        master mst;
-        strcpy( msg.msgtext, mst.get_location( name, index ).c_str() );
-        // cout << "index is " << index << endl;
-        int *handle = mst.get_handle( name, index );
-        // cout << "*handle is " << handle[0] << endl;
-        for (int i=0; i<3; i++){
-            msg.msgint[i] = *(handle+i);
-            // cout << "333" << endl;
+            msg.msgtype = 999; // 添加消息，类型为999
+            strcpy( msg.msgtext, mst.get_location( name, index ).c_str() );
+            int *handle = mst.get_handle( name, index );
+            for (int i=0; i<3; i++){
+                msg.msgint[i] = *(handle+i);
+            }
+            msgsnd(msqid, &msg, sizeof(msg.msgtext), 0);
         }
-        // cout << "I'm here." << endl;
-        msgsnd(msqid, &msg, sizeof(msg.msgtext), 0);
         cout << "Change messge done." << endl;
-    }
+    }     
 }
 
 int main()
 {
     changemsg( );
-    // msg_queue msg;
-    // for (int i=0; i<4; i++){
-    //     msgrcv( 11, &msg, sizeof(msg.msgtext), 0, 0);
-    //     cout << msg.msgtype << endl;
-    // }
     return 0;
 }
